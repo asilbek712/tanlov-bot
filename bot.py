@@ -6,13 +6,17 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram import F
+from aiogram.client.default import DefaultBotProperties
 
 # Tokenni o'qish
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8370996003:AAFhqnl8SoAvQnb1XSY02QbF-3mq05-ptDs")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8370996003:AAFhqn18SoAvQnb1XSY02QbF-3mq05-ptDs")
 ADMIN = os.getenv("ADMIN_USERNAME", "@chrvvvv")
 
-# Botni ishga tushirish
-bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
+# Botni ishga tushirish - YANGI USUL
+bot = Bot(
+    token=TOKEN, 
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher()
 
 # /start buyrug'i
@@ -41,7 +45,7 @@ async def register_handler(callback: CallbackQuery):
 @dp.message()
 async def all_messages(message: Message):
     user = message.from_user
-    user_info = f"📥 Yangi xabar:\n\n👤 Foydalanuvchi: @{user.username or 'Noma\'lum'}\n🆔 ID: {user.id}\n📝 Xabar: {message.text or 'Fayl yuborildi'}"
+    user_info = f"📥 Yangi xabar:\n\n👤 Foydalanuvchi: @{user.username or 'Noma\\'lum'}\n🆔 ID: {user.id}\n📝 Xabar: {message.text or 'Fayl yuborildi'}"
     
     # Admin ga yuborish
     try:
