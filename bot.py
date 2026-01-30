@@ -90,9 +90,9 @@ def save_admin_data():
 # ==================== START FUNKSIYALARI ====================
 START_TEXT = """📣 "BOBUR VORISLARI" VILOYAT ONLAYN VIDEOROLIKLAR TANLOVI
 
-"Bobur vorislari" viloyat onlayn videoroliklar tanlovi o‘tkaziladi...
+"Bobur vorislari" viloyat onlayn videoroliklar tanlovi o'tkaziladi...
 
-📍 Qashqadaryo viloyat tuman, shahar "Kelajak" markazlari to‘garak aʼzolari o‘rtasida Zahiriddin Muhammad Bobur tavalludining 543 yilligi munosabati bilan, uning hayoti va ijodi yuzasidan onlayn videoroliklar tanlovi tashkil etilmoqda.
+📍 Qashqadaryo viloyat tuman, shahar "Kelajak" markazlari to'garak a'zolari o'rtasida Zahiriddin Muhammad Bobur tavalludining 543 yilligi munosabati bilan, uning hayoti va ijodi yuzasidan onlayn videoroliklar tanlovi tashkil etilmoqda.
 
 🎯 **Maqsad:** Yosh avlodni ma'naviy tarbiyalash, ijodiy qobiliyatlarini rivojlantirish.
 
@@ -135,7 +135,7 @@ async def start_cmd(message: Message):
     # Ro'yxatdan o'tish
     buttons.append([InlineKeyboardButton(text="📝 Ro'yxatdan o'tish", callback_data="start_registration")])
     
-    # Admin bilan bog'lanish
+    # Admin bilan bog'lanish - TUG'RI URL
     buttons.append([InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")])
     
     # Admin uchun qo'shimcha tugmalar
@@ -169,7 +169,7 @@ async def myid_cmd(message: Message):
     user = message.from_user
     response = f"""🆔 **Sizning ma'lumotlaringiz:**
 ID: `{user.id}`
-Username: @{user.username or 'Yo\'q'}
+Username: @{user.username or 'Yo'q'}
 Ism: {user.first_name or ''}
 Familiya: {user.last_name or ''}"""
     
@@ -421,7 +421,7 @@ async def process_description(message: Message, state: FSMContext):
 
 📌 **Eslatma:** Ijodiy ishingizni @{ADMIN_USERNAME} ga yuboring."""
 
-    # Admin bilan bog'lanish tugmasi
+    # Admin bilan bog'lanish tugmasi - TUG'RI URL
     contact_button = InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")
     contact_keyboard = InlineKeyboardMarkup(inline_keyboard=[[contact_button]])
     
