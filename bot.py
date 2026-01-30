@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import json
-import threading
 from datetime import datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -13,7 +12,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
-import socket
 
 # TOKEN
 TOKEN = "8483323640:AAF6ti4BpL3npCITChDPYoKP734VdjCIwug"
@@ -36,13 +34,10 @@ class Registration(StatesGroup):
 # Fayllar ro'yxatlari
 IMAGE_FILES = [
     "bobur_poster.jpg",
-    "bobur_poster.png",
     "poster.jpg",
-    "poster.png",
-    "tanlov_rasmi.jpg",
-    "tanlov_rasmi.png",
-    "rasm.jpg",
-    "rasm.png"
+    "tanlov_poster.jpg",
+    "image.jpg",
+    "bobur_poster.png"
 ]
 
 DOC_FILES = [
@@ -58,65 +53,31 @@ PDF_FILES = [
 ]
 
 # ==================== WEB SERVER (PORT 8080) ====================
-# Uptime robot va Render uchun
-
 async def handle_health_check(request):
-    """Health check endpoint - uptime robot uchun"""
     return web.Response(
-        text="✅ Bot ishlayapti!\n📅 Server vaqti: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        text="✅ Tanlov Bot ishlayapti!\n📅 Vaqt: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         content_type='text/plain'
     )
 
-async def handle_status(request):
-    """Status endpoint - bot holatini ko'rsatish"""
-    status_info = {
-        "status": "running",
-        "bot": "@tanlov2026_bot",
-        "admin": f"@{ADMIN_USERNAME}",
-        "files": {
-            "docx": check_file_exists(DOC_FILES) is not None,
-            "pdf": check_file_exists(PDF_FILES) is not None,
-            "image": check_file_exists(IMAGE_FILES) is not None
-        },
-        "timestamp": datetime.now().isoformat(),
-        "uptime": "online"
-    }
-    return web.json_response(status_info)
-
 async def start_web_server():
-    """Web server ishga tushirish"""
     app = web.Application()
-    
-    # Endpoint'lar
     app.router.add_get('/', handle_health_check)
     app.router.add_get('/health', handle_health_check)
-    app.router.add_get('/status', handle_status)
-    app.router.add_get('/ping', handle_health_check)
     
-    # Web server ni ishga tushirish
     runner = web.AppRunner(app)
     await runner.setup()
-    
-    # PORT 8080 - Render standart porti
     site = web.TCPSite(runner, '0.0.0.0', 8080)
     await site.start()
-    
-    logging.info(f"🌐 Web server started on port 8080")
-    logging.info(f"🔗 Health check: http://0.0.0.0:8080/")
-    logging.info(f"📊 Status: http://0.0.0.0:8080/status")
-    
+    logging.info("🌐 Web server port 8080 da ishga tushdi")
     return runner
 
-# ==================== BOT FUNKSIYALARI ====================
-
-# Fayl mavjudligini tekshirish
+# ==================== YORDAMCHI FUNKSIYALAR ====================
 def check_file_exists(file_list):
     for file_name in file_list:
         if os.path.exists(file_name):
             return file_name
     return None
 
-# Admin ma'lumotlarini saqlash
 def save_admin_data():
     data = {
         "admin_chat_id": ADMIN_CHAT_ID,
@@ -126,29 +87,7 @@ def save_admin_data():
     with open("admin_config.json", "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-# Faylni yuklash funksiyasi
-async def send_file_safe(chat_id, file_path, caption, file_type="document"):
-    try:
-        if not os.path.exists(file_path):
-            return False, "Fayl topilmadi"
-        
-        file_size = os.path.getsize(file_path)
-        if file_size == 0:
-            return False, "Fayl bo'sh"
-        
-        file_obj = FSInputFile(file_path)
-        
-        if file_type == "photo":
-            await bot.send_photo(chat_id=chat_id, photo=file_obj, caption=caption)
-        else:
-            await bot.send_document(chat_id=chat_id, document=file_obj, caption=caption)
-            
-        return True, "Muvaffaqiyatli yuborildi"
-    except Exception as e:
-        logging.error(f"Fayl yuklashda xato: {e}")
-        return False, f"Xatolik: {str(e)}"
-
-# Start xabari matni
+# ==================== START FUNKSIYALARI ====================
 START_TEXT = """📣 "BOBUR VORISLARI" VILOYAT ONLAYN VIDEOROLIKLAR TANLOVI
 
 "Bobur vorislari" viloyat onlayn videoroliklar tanlovi o‘tkaziladi...
@@ -173,19 +112,14 @@ START_TEXT = """📣 "BOBUR VORISLARI" VILOYAT ONLAYN VIDEOROLIKLAR TANLOVI
 
 ℹ️ **Batafsil ma'lumot:** Quyidagi tugmalar orqali"""
 
-# /start - asosiy buyruq
 @dp.message(Command("start"))
 async def start_cmd(message: Message):
     user = message.from_user
     
-    # Admin kirganda log qilish
     if user.id == ADMIN_CHAT_ID:
         logging.info(f"🔥 ADMIN KIRDI: @{user.username} (ID: {user.id})")
     
-    # Rasm mavjudligini tekshirish
-    image_file = check_file_exists(IMAGE_FILES)
-    
-    # Tugmalar
+    # Tugmalarni yaratish
     buttons = []
     
     # Nizom fayllari tugmalari
@@ -204,29 +138,32 @@ async def start_cmd(message: Message):
     # Admin bilan bog'lanish
     buttons.append([InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")])
     
-    # ID ni ko'rish (faqat admin uchun)
+    # Admin uchun qo'shimcha tugmalar
     if user.id == ADMIN_CHAT_ID:
         buttons.append([InlineKeyboardButton(text="🆔 ID ni ko'rish", callback_data="show_id")])
         buttons.append([InlineKeyboardButton(text="📊 Statistika", callback_data="show_stats")])
-        buttons.append([InlineKeyboardButton(text="🔄 Restart", callback_data="restart_bot")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     # Rasm mavjud bo'lsa, rasm bilan yuborish
+    image_file = check_file_exists(IMAGE_FILES)
+    
     if image_file:
-        success, msg = await send_file_safe(
-            message.chat.id, 
-            image_file, 
-            caption=START_TEXT,
-            file_type="photo"
-        )
-        
-        if not success:
+        try:
+            photo = FSInputFile(image_file)
+            await bot.send_photo(
+                chat_id=message.chat.id,
+                photo=photo,
+                caption=START_TEXT,
+                reply_markup=keyboard
+            )
+        except Exception as e:
+            logging.error(f"Rasm yuborishda xato: {e}")
             await message.answer(START_TEXT, reply_markup=keyboard)
     else:
         await message.answer(START_TEXT, reply_markup=keyboard)
 
-# /myid - ID ni ko'rish
+# ==================== ID FUNKSIYALARI ====================
 @dp.message(Command("myid"))
 async def myid_cmd(message: Message):
     user = message.from_user
@@ -237,12 +174,7 @@ Ism: {user.first_name or ''}
 Familiya: {user.last_name or ''}"""
     
     await message.answer(response)
-    
-    # Admin uchun qo'shimcha ma'lumot
-    if user.id == ADMIN_CHAT_ID:
-        await message.answer("✅ **Siz adminsiz!** Barcha ro'yxatdan o'tishlar sizga yuboriladi.")
 
-# Admin ID ni ko'rish
 @dp.callback_query(F.data == "show_id")
 async def show_id_cmd(callback: CallbackQuery):
     await callback.answer()
@@ -254,7 +186,7 @@ Admin username: @{ADMIN_USERNAME}
 Sizning ID: `{user.id}`"""
         await callback.message.answer(text)
 
-# Statistika ko'rsatish (admin uchun)
+# ==================== STATISTIKA FUNKSIYASI ====================
 @dp.callback_query(F.data == "show_stats")
 async def show_stats_cmd(callback: CallbackQuery):
     await callback.answer()
@@ -266,22 +198,8 @@ async def show_stats_cmd(callback: CallbackQuery):
         pdf_file = check_file_exists(PDF_FILES)
         image_file = check_file_exists(IMAGE_FILES)
         
-        # Port tekshirish
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            result = sock.connect_ex(('127.0.0.1', 8080))
-            port_status = "✅ Ochiq (8080)" if result == 0 else "❌ Yopiq"
-            sock.close()
-        except:
-            port_status = "❌ Xato"
-        
         stats_text = f"""📊 **Bot statistika:**
-
-🌐 **Server holati:**
-Port: {port_status}
-Vaqt: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
+        
 📁 **Fayllar holati:**
 """
         if doc_file:
@@ -306,20 +224,7 @@ Vaqt: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         
         await callback.message.answer(stats_text)
 
-# Restart tugmasi (admin uchun)
-@dp.callback_query(F.data == "restart_bot")
-async def restart_bot_cmd(callback: CallbackQuery):
-    await callback.answer("🔄 Restart bajarilmoqda...")
-    user = callback.from_user
-    
-    if user.id == ADMIN_CHAT_ID:
-        await callback.message.answer("♻️ Bot restart qilinmoqda...")
-        logging.info(f"🔄 Admin tomonidan restart: @{user.username}")
-        
-        # Restart signal yuborish
-        os._exit(1)
-
-# DOCX faylni yuklash
+# ==================== FAYL YUKLASH FUNKSIYALARI ====================
 @dp.callback_query(F.data == "download_doc")
 async def download_doc_cmd(callback: CallbackQuery):
     await callback.answer("📥 Yuklanmoqda...")
@@ -327,22 +232,22 @@ async def download_doc_cmd(callback: CallbackQuery):
     doc_file = check_file_exists(DOC_FILES)
     
     if doc_file:
-        success, msg = await send_file_safe(
-            callback.message.chat.id,
-            doc_file,
-            caption="📄 **Tanlov nizomi**\nFaylni yuklab oling va o'qing.",
-            file_type="document"
-        )
-        
-        if not success:
-            await callback.message.answer(f"❌ {msg}\n\n👤 Admin bilan bog'laning: @{ADMIN_USERNAME}")
+        try:
+            doc_obj = FSInputFile(doc_file)
+            await bot.send_document(
+                chat_id=callback.message.chat.id,
+                document=doc_obj,
+                caption="📄 **Tanlov nizomi**\nFaylni yuklab oling va o'qing."
+            )
+        except Exception as e:
+            logging.error(f"DOCX yuklashda xato: {e}")
+            await callback.message.answer(f"❌ Fayl yuklashda xatolik\n\n👤 Admin bilan bog'laning: @{ADMIN_USERNAME}")
     else:
         await callback.message.answer(
             f"❌ Nizom fayli topilmadi.\n\n"
             f"👤 Admin bilan bog'laning: @{ADMIN_USERNAME}"
         )
 
-# PDF faylni yuklash
 @dp.callback_query(F.data == "download_pdf")
 async def download_pdf_cmd(callback: CallbackQuery):
     await callback.answer("📥 Yuklanmoqda...")
@@ -350,22 +255,23 @@ async def download_pdf_cmd(callback: CallbackQuery):
     pdf_file = check_file_exists(PDF_FILES)
     
     if pdf_file:
-        success, msg = await send_file_safe(
-            callback.message.chat.id,
-            pdf_file,
-            caption="📄 **Tanlov nizomi (PDF)**\nFaylni yuklab oling va o'qing.",
-            file_type="document"
-        )
-        
-        if not success:
-            await callback.message.answer(f"❌ {msg}\n\n👤 Admin bilan bog'laning: @{ADMIN_USERNAME}")
+        try:
+            pdf_obj = FSInputFile(pdf_file)
+            await bot.send_document(
+                chat_id=callback.message.chat.id,
+                document=pdf_obj,
+                caption="📄 **Tanlov nizomi (PDF)**\nFaylni yuklab oling va o'qing."
+            )
+        except Exception as e:
+            logging.error(f"PDF yuklashda xato: {e}")
+            await callback.message.answer(f"❌ Fayl yuklashda xatolik\n\n👤 Admin bilan bog'laning: @{ADMIN_USERNAME}")
     else:
         await callback.message.answer(
             f"❌ PDF fayli topilmadi.\n\n"
             f"👤 Admin bilan bog'laning: @{ADMIN_USERNAME}"
         )
 
-# Ro'yxatdan o'tishni boshlash
+# ==================== RO'YXATDAN O'TISH FUNKSIYALARI ====================
 @dp.callback_query(F.data == "start_registration")
 async def start_registration_cmd(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -380,18 +286,12 @@ Quyidagi ma'lumotlarni ketma-ket yuboring:
     
     await callback.message.answer(text)
 
-# Ism qabul qilish
 @dp.message(Registration.waiting_for_name)
 async def process_name(message: Message, state: FSMContext):
     name = message.text.strip()
     
     if len(name) < 3:
         await message.answer("❌ Ism va familiya kamida 3 ta belgidan iborat bo'lishi kerak. Qaytadan kiriting:")
-        return
-    
-    # Ismda faqat harf va probel bo'lishi kerak
-    if not all(c.isalpha() or c.isspace() for c in name):
-        await message.answer("❌ Ism va familiya faqat harflardan iborat bo'lishi kerak. Qaytadan kiriting:")
         return
     
     await state.update_data(full_name=name)
@@ -402,7 +302,6 @@ async def process_name(message: Message, state: FSMContext):
 2️⃣ **Yoshingizni** yuboring (8-18 yosh oralig'ida).
 (Misol: *15*)""")
 
-# Yosh qabul qilish
 @dp.message(Registration.waiting_for_age)
 async def process_age(message: Message, state: FSMContext):
     try:
@@ -422,7 +321,6 @@ async def process_age(message: Message, state: FSMContext):
 3️⃣ **Manzilingizni** yuboring (shahar/tuman).
 (Misol: *Qarshi shahri*)""")
 
-# Manzil qabul qilish
 @dp.message(Registration.waiting_for_location)
 async def process_location(message: Message, state: FSMContext):
     location = message.text.strip()
@@ -439,7 +337,6 @@ async def process_location(message: Message, state: FSMContext):
 4️⃣ **Telefon raqamingizni** yuboring.
 (Misol: *+998901234567* yoki *901234567*)""")
 
-# Telefon qabul qilish
 @dp.message(Registration.waiting_for_phone)
 async def process_phone(message: Message, state: FSMContext):
     phone = message.text.strip().replace(' ', '')
@@ -465,7 +362,6 @@ async def process_phone(message: Message, state: FSMContext):
 5️⃣ **Ijodiy ishingiz haqida qisqacha ma'lumot** yuboring.
 (Misol: *Boburning "Men sendin so'rayman..." g'azalini o'qiganman, video 1 daqiqa 45 soniya*)""")
 
-# Tavsif qabul qilish va yakunlash
 @dp.message(Registration.waiting_for_description)
 async def process_description(message: Message, state: FSMContext):
     description = message.text.strip()
@@ -482,15 +378,13 @@ async def process_description(message: Message, state: FSMContext):
     # Foydalanuvchi ma'lumotlari
     user = message.from_user
     username = user.username or "Noma'lum"
-    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
     
     # Admin ga yuborish matni
     admin_text = f"""📥 **YANGI RO'YXATDAN O'TISH**
 
 👤 **Foydalanuvchi:** @{username}
 🆔 **ID:** `{user.id}`
-📛 **Telegram nomi:** {full_name}
-📞 **Telegram link:** https://t.me/{username if username != "Noma'lum" else ''}
+📛 **Telegram nomi:** {user.first_name or ''} {user.last_name or ''}
 
 📋 **MA'LUMOTLAR:**
 1️⃣ **Ism-familiya:** {data['full_name']}
@@ -539,36 +433,35 @@ async def process_description(message: Message, state: FSMContext):
     await message.answer(success_text, reply_markup=contact_keyboard)
     await state.clear()
 
-# Boshqa xabarlar
+# ==================== BOSHQA XABARLAR ====================
 @dp.message()
-async def handle_other_messages(message: Message):
-    # Agar hech qanday holat bo'lmasa, startni qayta yuborish
-    await start_cmd(message)
+async def handle_other_messages(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is None:
+        # Agar ro'yxatdan o'tish jarayonida bo'lmasa, start qayta yuborish
+        await start_cmd(message)
+    else:
+        # Agar ro'yxatdan o'tish jarayonida bo'lsa
+        await message.answer("⚠️ Siz ro'yxatdan o'tish jarayonidasiz. Davom eting yoki /start ni bosing.")
 
 # ==================== ASOSIY FUNKSIYA ====================
 async def main():
-    # Log sozlamalari
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('bot.log', encoding='utf-8')
-        ]
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
-    logging.info("🚀 ===== BOT ISHGA TUSHMOQDA =====")
     
     # Admin ma'lumotlarini saqlash
     save_admin_data()
     
-    # Web server ishga tushirish
-    web_server = await start_web_server()
+    # Log boshlash
+    logging.info("🚀 ===== BOT ISHGA TUSHMOQDA =====")
     
     # Fayllarni tekshirish
     current_files = os.listdir('.')
     logging.info(f"📁 Mavjud fayllar: {len(current_files)} ta")
     
+    # Fayllarni ko'rsatish
     doc_file = check_file_exists(DOC_FILES)
     if doc_file:
         size = os.path.getsize(doc_file) / 1024
@@ -591,8 +484,12 @@ async def main():
         logging.warning("⚠️ Rasm topilmadi")
     
     logging.info(f"👤 Admin: @{ADMIN_USERNAME} (ID: {ADMIN_CHAT_ID})")
-    logging.info(f"🤖 Bot: @tanlov2026_bot")
-    logging.info("🔄 Bot polling boshlandi...")
+    logging.info("🌐 Web server ishga tushmoqda...")
+    
+    # Web server ishga tushirish
+    web_server = await start_web_server()
+    
+    logging.info("🤖 Bot polling boshlandi...")
     
     try:
         # Bot polling ni ishga tushirish
@@ -603,11 +500,4 @@ async def main():
         logging.info("👋 Bot to'xtatildi")
 
 if __name__ == "__main__":
-    # Xatoliklarni ushlash
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logging.info("🛑 Bot foydalanuvchi tomonidan to'xtatildi")
-    except Exception as e:
-        logging.error(f"❌ Kutilmagan xatolik: {e}")
-        raise
+    asyncio.run(main())
