@@ -45,7 +45,10 @@ async def register_handler(callback: CallbackQuery):
 @dp.message()
 async def all_messages(message: Message):
     user = message.from_user
-    user_info = f"📥 Yangi xabar:\n\n👤 Foydalanuvchi: @{user.username or 'Noma\\'lum'}\n🆔 ID: {user.id}\n📝 Xabar: {message.text or 'Fayl yuborildi'}"
+    username = user.username if user.username else "Noma'lum"
+    message_text = message.text if message.text else "Fayl yuborildi"
+    
+    user_info = f"📥 Yangi xabar:\n\n👤 Foydalanuvchi: @{username}\n🆔 ID: {user.id}\n📝 Xabar: {message_text}"
     
     # Admin ga yuborish
     try:
