@@ -5,8 +5,9 @@ from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
-API_TOKEN = "8370996003:AAFhqnl8SoAvQnb1XSY02QbF-3mq05-ptDs"
-ADMIN_USERNAME = "@chrvvvv"
+# Environment variable dan o'qish, agar bo'lmasa default qiymat
+API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8370996003:AAFhqnl8SoAvQnb1XSY02QbF-3mq05-ptDs")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "@chrvvvv")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -50,7 +51,7 @@ async def save_data(message: types.Message):
     await bot.send_message(chat_id=ADMIN_USERNAME, text=admin_message)
     
     # Foydalanuvchiga javob
-    await message.reply("✅ Ma’lumotlaringiz qabul qilindi. Adminlar tez orada siz bilan bog‘lanadi.")
+    await message.reply("✅ Ma'lumotlaringiz qabul qilindi. Adminlar tez orada siz bilan bog'lanadi.")
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
