@@ -24,10 +24,7 @@ async def start_handler(message: Message):
         ]
     )
     
-    text = """
-    Salom! "Siz mo'tabarsiz aziz onajon" tanloviga xush kelibsiz.
-    Ro'yxatdan o'tish uchun quyidagi tugmani bosing.
-    """
+    text = "Salom! \"Siz mo'tabarsiz aziz onajon\" tanloviga xush kelibsiz.\nRo'yxatdan o'tish uchun quyidagi tugmani bosing."
     
     await message.answer(text, reply_markup=keyboard)
 
@@ -36,15 +33,7 @@ async def start_handler(message: Message):
 async def register_handler(callback: CallbackQuery):
     await callback.answer()
     
-    text = """
-    Quyidagi ma'lumotlarni ketma-ket yuboring:
-    
-    1. Ism-familiya
-    2. Yosh (8-18)
-    3. Manzil (shahar/tuman)
-    4. Telefon raqam
-    5. Ijodiy ish haqida qisqacha ma'lumot
-    """
+    text = "Quyidagi ma'lumotlarni ketma-ket yuboring:\n\n1. Ism-familiya\n2. Yosh (8-18)\n3. Manzil (shahar/tuman)\n4. Telefon raqam\n5. Ijodiy ish haqida qisqacha ma'lumot"
     
     await callback.message.answer(text)
 
@@ -52,13 +41,7 @@ async def register_handler(callback: CallbackQuery):
 @dp.message()
 async def all_messages(message: Message):
     user = message.from_user
-    user_info = f"""
-    📥 Yangi xabar:
-    
-    👤 Foydalanuvchi: @{user.username or 'Noma\'lum'}
-    🆔 ID: {user.id}
-    📝 Xabar: {message.text or 'Fayl yuborildi'}
-    """
+    user_info = f"📥 Yangi xabar:\n\n👤 Foydalanuvchi: @{user.username or 'Noma\'lum'}\n🆔 ID: {user.id}\n📝 Xabar: {message.text or 'Fayl yuborildi'}"
     
     # Admin ga yuborish
     try:
