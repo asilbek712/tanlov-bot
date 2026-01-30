@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import json
+import threading
 from datetime import datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -11,6 +12,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiohttp import web
+import socket
 
 # TOKEN
 TOKEN = "8483323640:AAF6ti4BpL3npCITChDPYoKP734VdjCIwug"
@@ -53,6 +56,58 @@ PDF_FILES = [
     "tanlov_nizom.pdf",
     "nizom.pdf"
 ]
+
+# ==================== WEB SERVER (PORT 8080) ====================
+# Uptime robot va Render uchun
+
+async def handle_health_check(request):
+    """Health check endpoint - uptime robot uchun"""
+    return web.Response(
+        text="✅ Bot ishlayapti!\n📅 Server vaqti: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        content_type='text/plain'
+    )
+
+async def handle_status(request):
+    """Status endpoint - bot holatini ko'rsatish"""
+    status_info = {
+        "status": "running",
+        "bot": "@tanlov2026_bot",
+        "admin": f"@{ADMIN_USERNAME}",
+        "files": {
+            "docx": check_file_exists(DOC_FILES) is not None,
+            "pdf": check_file_exists(PDF_FILES) is not None,
+            "image": check_file_exists(IMAGE_FILES) is not None
+        },
+        "timestamp": datetime.now().isoformat(),
+        "uptime": "online"
+    }
+    return web.json_response(status_info)
+
+async def start_web_server():
+    """Web server ishga tushirish"""
+    app = web.Application()
+    
+    # Endpoint'lar
+    app.router.add_get('/', handle_health_check)
+    app.router.add_get('/health', handle_health_check)
+    app.router.add_get('/status', handle_status)
+    app.router.add_get('/ping', handle_health_check)
+    
+    # Web server ni ishga tushirish
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    # PORT 8080 - Render standart porti
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    
+    logging.info(f"🌐 Web server started on port 8080")
+    logging.info(f"🔗 Health check: http://0.0.0.0:8080/")
+    logging.info(f"📊 Status: http://0.0.0.0:8080/status")
+    
+    return runner
+
+# ==================== BOT FUNKSIYALARI ====================
 
 # Fayl mavjudligini tekshirish
 def check_file_exists(file_list):
@@ -153,6 +208,7 @@ async def start_cmd(message: Message):
     if user.id == ADMIN_CHAT_ID:
         buttons.append([InlineKeyboardButton(text="🆔 ID ni ko'rish", callback_data="show_id")])
         buttons.append([InlineKeyboardButton(text="📊 Statistika", callback_data="show_stats")])
+        buttons.append([InlineKeyboardButton(text="🔄 Restart", callback_data="restart_bot")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
@@ -210,8 +266,22 @@ async def show_stats_cmd(callback: CallbackQuery):
         pdf_file = check_file_exists(PDF_FILES)
         image_file = check_file_exists(IMAGE_FILES)
         
-        stats_text = """📊 **Bot statistika:**
+        # Port tekshirish
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('127.0.0.1', 8080))
+            port_status = "✅ Ochiq (8080)" if result == 0 else "❌ Yopiq"
+            sock.close()
+        except:
+            port_status = "❌ Xato"
         
+        stats_text = f"""📊 **Bot statistika:**
+
+🌐 **Server holati:**
+Port: {port_status}
+Vaqt: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
 📁 **Fayllar holati:**
 """
         if doc_file:
@@ -235,6 +305,19 @@ async def show_stats_cmd(callback: CallbackQuery):
         stats_text += f"\n👤 **Admin:** @{ADMIN_USERNAME}"
         
         await callback.message.answer(stats_text)
+
+# Restart tugmasi (admin uchun)
+@dp.callback_query(F.data == "restart_bot")
+async def restart_bot_cmd(callback: CallbackQuery):
+    await callback.answer("🔄 Restart bajarilmoqda...")
+    user = callback.from_user
+    
+    if user.id == ADMIN_CHAT_ID:
+        await callback.message.answer("♻️ Bot restart qilinmoqda...")
+        logging.info(f"🔄 Admin tomonidan restart: @{user.username}")
+        
+        # Restart signal yuborish
+        os._exit(1)
 
 # DOCX faylni yuklash
 @dp.callback_query(F.data == "download_doc")
@@ -462,47 +545,69 @@ async def handle_other_messages(message: Message):
     # Agar hech qanday holat bo'lmasa, startni qayta yuborish
     await start_cmd(message)
 
-# Asosiy funksiya
+# ==================== ASOSIY FUNKSIYA ====================
 async def main():
+    # Log sozlamalari
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('bot.log', encoding='utf-8')
+        ]
     )
+    
+    logging.info("🚀 ===== BOT ISHGA TUSHMOQDA =====")
     
     # Admin ma'lumotlarini saqlash
     save_admin_data()
     
-    # Serverda mavjud fayllarni ko'rsatish
-    logging.info("🤖 Bot ishga tushmoqda...")
-    logging.info(f"👤 Admin: @{ADMIN_USERNAME} (ID: {ADMIN_CHAT_ID})")
+    # Web server ishga tushirish
+    web_server = await start_web_server()
     
     # Fayllarni tekshirish
     current_files = os.listdir('.')
-    logging.info(f"📁 Mavjud fayllar: {current_files}")
+    logging.info(f"📁 Mavjud fayllar: {len(current_files)} ta")
     
     doc_file = check_file_exists(DOC_FILES)
     if doc_file:
         size = os.path.getsize(doc_file) / 1024
-        logging.info(f"✅ DOCX fayl topildi: {doc_file} ({size:.1f} KB)")
+        logging.info(f"✅ DOCX fayl: {doc_file} ({size:.1f} KB)")
     else:
         logging.warning("⚠️ DOCX fayl topilmadi")
     
     pdf_file = check_file_exists(PDF_FILES)
     if pdf_file:
         size = os.path.getsize(pdf_file) / 1024
-        logging.info(f"✅ PDF fayl topildi: {pdf_file} ({size:.1f} KB)")
+        logging.info(f"✅ PDF fayl: {pdf_file} ({size:.1f} KB)")
     else:
         logging.warning("⚠️ PDF fayl topilmadi")
     
     image_file = check_file_exists(IMAGE_FILES)
     if image_file:
         size = os.path.getsize(image_file) / 1024
-        logging.info(f"✅ Rasm topildi: {image_file} ({size:.1f} KB)")
+        logging.info(f"✅ Rasm: {image_file} ({size:.1f} KB)")
     else:
         logging.warning("⚠️ Rasm topilmadi")
     
-    logging.info("🚀 Bot ishga tushdi...")
-    await dp.start_polling(bot)
+    logging.info(f"👤 Admin: @{ADMIN_USERNAME} (ID: {ADMIN_CHAT_ID})")
+    logging.info(f"🤖 Bot: @tanlov2026_bot")
+    logging.info("🔄 Bot polling boshlandi...")
+    
+    try:
+        # Bot polling ni ishga tushirish
+        await dp.start_polling(bot)
+    finally:
+        # Tozalash
+        await web_server.cleanup()
+        logging.info("👋 Bot to'xtatildi")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Xatoliklarni ushlash
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("🛑 Bot foydalanuvchi tomonidan to'xtatildi")
+    except Exception as e:
+        logging.error(f"❌ Kutilmagan xatolik: {e}")
+        raise
