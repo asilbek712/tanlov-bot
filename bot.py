@@ -22,7 +22,7 @@ async def cmd_start(message: Message):
         [InlineKeyboardButton(text="Ro'yxatdan o'tish", callback_data='register')]
     ])
     await message.answer("""
-Salom! "Siz mo‘tabarsiz aziz onajon" ko‘rik-tanloviga xush kelibsiz.
+Salom! "Siz mo‘tabarsizz aziz onajon" ko‘rik-tanloviga xush kelibsiz.
 Ro‘yxatdan o‘tish uchun quyidagi tugmani bosing.
     """, reply_markup=keyboard)
 
