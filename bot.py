@@ -167,9 +167,13 @@ async def start_cmd(message: Message):
 @dp.message(Command("myid"))
 async def myid_cmd(message: Message):
     user = message.from_user
+    
+    # APOSTROF MUAMMOSINI HAL QILISH
+    username_display = f"@{user.username}" if user.username else "Yo'q"
+    
     response = f"""🆔 **Sizning ma'lumotlaringiz:**
 ID: `{user.id}`
-Username: @{user.username or 'Yo'q'}
+Username: {username_display}
 Ism: {user.first_name or ''}
 Familiya: {user.last_name or ''}"""
     
