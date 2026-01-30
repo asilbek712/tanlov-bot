@@ -36,7 +36,7 @@ Ro‘yxatdan o‘tish uchun quyidagi ma’lumotlarni yuboring:
 2. Yosh (8-18)
 3. Manzil (shahar/tuman)
 4. Telefon raqam
-5. Ijodiy ish haqida qisqacha ma’lumot (video yoki matn)
+5. Ijodiyy ish haqida qisqacha ma’lumot (video yoki matn)
 
 Ma’lumotlarni shu xabarga javoban ketma-ket yuboring.
     """)
