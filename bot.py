@@ -24,59 +24,116 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-# SQLite bazasini yaratish
-def init_database():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
+# SQLite bazasini yaratish va connection boshqaruvi
+class Database:
+    def __init__(self):
+        self.db_path = 'users.db'
+        self.init_db()
     
-    # Foydalanuvchilar jadvali
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS registered_users (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT,
-        full_name TEXT,
-        age INTEGER,
-        location TEXT,
-        phone TEXT,
-        description TEXT,
-        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
+    def init_db(self):
+        """Bazani ishga tushirish"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Foydalanuvchilar jadvali
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS registered_users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            full_name TEXT,
+            age INTEGER,
+            location TEXT,
+            phone TEXT,
+            description TEXT,
+            registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        conn.commit()
+        conn.close()
     
-    conn.commit()
-    conn.close()
+    def get_connection(self):
+        """Yangi connection olish"""
+        conn = sqlite3.connect(self.db_path)
+        return conn
+    
+    def check_user_registered(self, user_id):
+        """Foydalanuvchini bazadan tekshirish"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM registered_users WHERE user_id = ?', (user_id,))
+        user = cursor.fetchone()
+        
+        conn.close()
+        return user is not None
+    
+    def add_user(self, user_data):
+        """Foydalanuvchini bazaga qo'shish"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+            INSERT INTO registered_users (user_id, username, full_name, age, location, phone, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                user_data['user_id'],
+                user_data['username'],
+                user_data['full_name'],
+                user_data['age'],
+                user_data['location'],
+                user_data['phone'],
+                user_data['description']
+            ))
+            
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Bazaga qo'shishda xato: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def update_user_phone(self, user_id, phone):
+        """Foydalanuvchi telefon raqamini yangilash"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('UPDATE registered_users SET phone = ? WHERE user_id = ?', 
+                          (phone, user_id))
+            
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Telefon yangilashda xato: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def get_user_count(self):
+        """Ro'yxatdan o'tganlar soni"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT COUNT(*) FROM registered_users')
+        count = cursor.fetchone()[0]
+        
+        conn.close()
+        return count
+    
+    def get_all_users(self):
+        """Barcha foydalanuvchilar (admin uchun)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT user_id, username, full_name, phone, registered_at FROM registered_users ORDER BY registered_at DESC')
+        users = cursor.fetchall()
+        
+        conn.close()
+        return users
 
-# Foydalanuvchini bazadan tekshirish
-def check_user_registered(user_id):
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT * FROM registered_users WHERE user_id = ?', (user_id,))
-    user = cursor.fetchone()
-    
-    conn.close()
-    return user is not None
-
-# Foydalanuvchini bazaga qo'shish
-def add_user_to_db(user_data):
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-    INSERT INTO registered_users (user_id, username, full_name, age, location, phone, description)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        user_data['user_id'],
-        user_data['username'],
-        user_data['full_name'],
-        user_data['age'],
-        user_data['location'],
-        user_data['phone'],
-        user_data['description']
-    ))
-    
-    conn.commit()
-    conn.close()
+# Global database obyekti
+db = Database()
 
 # FSM holatlari
 class Registration(StatesGroup):
@@ -189,7 +246,7 @@ async def start_cmd(message: Message):
         logging.info(f"🔥 ADMIN KIRDI: @{user.username} (ID: {user.id})")
     
     # Foydalanuvchi allaqachon ro'yxatdan o'tganmi?
-    if check_user_registered(user.id):
+    if db.check_user_registered(user.id):
         # Agar ro'yxatdan o'tgan bo'lsa, maxsus menyu
         buttons = [
             [InlineKeyboardButton(text="📄 Tanlov nizomi (DOCX)", callback_data="download_doc")],
@@ -263,6 +320,7 @@ Agar telefon raqamingizni yangilash zarur bo'lsa, yuqoridagi tugmadan foydalanin
     if user.id == ADMIN_CHAT_ID:
         buttons.append([InlineKeyboardButton(text="🆔 ID ni ko'rish", callback_data="show_id")])
         buttons.append([InlineKeyboardButton(text="📊 Statistika", callback_data="show_stats")])
+        buttons.append([InlineKeyboardButton(text="👥 Ro'yxatdan o'tganlar", callback_data="show_users")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
@@ -324,13 +382,7 @@ async def show_stats_cmd(callback: CallbackQuery):
         image_file = check_file_exists(IMAGE_FILES)
         
         # Bazadan statistika
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT COUNT(*) FROM registered_users')
-        total_users = cursor.fetchone()[0]
-        
-        conn.close()
+        total_users = db.get_user_count()
         
         stats_text = f"""📊 **Bot statistika:**
 
@@ -359,6 +411,34 @@ async def show_stats_cmd(callback: CallbackQuery):
         stats_text += f"\n👤 **Admin:** @{ADMIN_USERNAME}"
         
         await callback.message.answer(stats_text)
+
+# ==================== FOYDALANUVCHILARNI KO'RISH (ADMIN) ====================
+@dp.callback_query(F.data == "show_users")
+async def show_users_cmd(callback: CallbackQuery):
+    await callback.answer()
+    user = callback.from_user
+    
+    if user.id == ADMIN_CHAT_ID:
+        users = db.get_all_users()
+        
+        if not users:
+            await callback.message.answer("📭 Hali hech kim ro'yxatdan o'tmagan.")
+            return
+        
+        text = f"👥 **Ro'yxatdan o'tganlar ({len(users)} ta):**\n\n"
+        
+        for idx, user_data in enumerate(users[:20], 1):  # Birinchi 20 tasini ko'rsatish
+            user_id, username, full_name, phone, registered_at = user_data
+            text += f"{idx}. {full_name}\n"
+            text += f"   👤 @{username or 'Noma\'lum'}\n"
+            text += f"   🆔 {user_id}\n"
+            text += f"   📱 {phone}\n"
+            text += f"   📅 {registered_at}\n\n"
+        
+        if len(users) > 20:
+            text += f"\n⚠️ Faqat birinchi 20 ta ko'rsatilmoqda. Jami: {len(users)} ta"
+        
+        await callback.message.answer(text)
 
 # ==================== FAYL YUKLASH FUNKSIYALARI ====================
 @dp.callback_query(F.data == "download_doc")
@@ -413,7 +493,7 @@ async def update_phone_cmd(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     
     # Foydalanuvchi ro'yxatdan o'tganmi?
-    if not check_user_registered(callback.from_user.id):
+    if not db.check_user_registered(callback.from_user.id):
         await callback.message.answer("❌ Siz hali ro'yxatdan o'tmagansiz. Avval ro'yxatdan o'ting.")
         return
     
@@ -437,48 +517,48 @@ async def process_update_phone(message: Message, state: FSMContext):
     # Telefon raqamini tekshirish va formatlash
     cleaned_phone = phone.replace('+', '')
     if not cleaned_phone.isdigit():
-        await message.answer("❌ Telefon raqami faqat raqamlardan iborat bo'lishi kerak. Qaytadan kiriting:")
+        await message.answer("❌ Telefon raqami faqat raqamlardan iborat bo'lishi kerak. Qaytadan kiriting:",
+                           reply_markup=create_phone_keyboard())
         return
     
     if len(cleaned_phone) < 9:
-        await message.answer("❌ Telefon raqami juda qisqa. To'liq raqam kiriting:")
+        await message.answer("❌ Telefon raqami juda qisqa. To'liq raqam kiriting:",
+                           reply_markup=create_phone_keyboard())
         return
     
     if not (cleaned_phone.startswith('998') or len(cleaned_phone) == 9):
         phone = f"+998{cleaned_phone[-9:]}" if len(cleaned_phone) == 9 else f"+{cleaned_phone}"
     
-    # Bazaga yangilash
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('UPDATE registered_users SET phone = ? WHERE user_id = ?', 
-                  (phone, message.from_user.id))
-    
-    conn.commit()
-    conn.close()
-    
-    await message.answer(
-        f"✅ **Telefon raqamingiz muvaffaqiyatli yangilandi!**\n\n"
-        f"📱 **Yangi raqam:** {phone}\n\n"
-        f"👤 **Admin:** @{ADMIN_USERNAME}",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="/start")]],
-            resize_keyboard=True
-        )
-    )
-    
-    # Admin ga bildirish
     try:
-        await bot.send_message(
-            chat_id=ADMIN_CHAT_ID,
-            text=f"📱 **Telefon raqam yangilandi**\n\n"
-                 f"👤 Foydalanuvchi: @{message.from_user.username or 'Noma\'lum'}\n"
-                 f"🆔 ID: `{message.from_user.id}`\n"
-                 f"📱 Yangi raqam: {phone}\n"
-                 f"⏰ Vaqt: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        # Bazaga yangilash
+        db.update_user_phone(message.from_user.id, phone)
+        
+        await message.answer(
+            f"✅ **Telefon raqamingiz muvaffaqiyatli yangilandi!**\n\n"
+            f"📱 **Yangi raqam:** {phone}\n\n"
+            f"👤 **Admin:** @{ADMIN_USERNAME}",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text="/start")]],
+                resize_keyboard=True
+            )
         )
+        
+        # Admin ga bildirish
+        try:
+            await bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=f"📱 **Telefon raqam yangilandi**\n\n"
+                     f"👤 Foydalanuvchi: @{message.from_user.username or 'Noma\'lum'}\n"
+                     f"🆔 ID: `{message.from_user.id}`\n"
+                     f"📱 Yangi raqam: {phone}\n"
+                     f"⏰ Vaqt: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        except Exception as e:
+            logging.error(f"Adminga xabar yuborishda xato: {e}")
+    
     except Exception as e:
-        logging.error(f"Adminga xabar yuborishda xato: {e}")
+        logging.error(f"Telefon raqam yangilashda xato: {e}")
+        await message.answer("❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring yoki admin bilan bog'laning.")
     
     await state.clear()
 
@@ -488,7 +568,7 @@ async def start_registration_cmd(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     
     # Foydalanuvchi allaqachon ro'yxatdan o'tganmi?
-    if check_user_registered(callback.from_user.id):
+    if db.check_user_registered(callback.from_user.id):
         await callback.message.answer(
             "❌ **Siz allaqachon ro'yxatdan o'tgansiz!**\n\n"
             "Siz faqat bir marta ro'yxatdan o'tishingiz mumkin.\n"
@@ -625,10 +705,16 @@ async def process_description(message: Message, state: FSMContext):
         'description': data['description']
     }
     
-    add_user_to_db(user_data)
+    try:
+        db.add_user(user_data)
+        save_success = True
+    except Exception as e:
+        logging.error(f"Bazaga saqlashda xato: {e}")
+        save_success = False
     
-    # Admin ga yuborish matni
-    admin_text = f"""📥 **YANGI RO'YXATDAN O'TISH**
+    if save_success:
+        # Admin ga yuborish matni
+        admin_text = f"""📥 **YANGI RO'YXATDAN O'TISH**
 
 👤 **Foydalanuvchi:** @{username}
 🆔 **ID:** `{user.id}`
@@ -642,22 +728,22 @@ async def process_description(message: Message, state: FSMContext):
 5️⃣ **Ijodiy ish:** {data['description']}
 
 ⏰ **Vaqt:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-👥 **Jami ro'yxatdan o'tganlar:** {len(get_all_users())}"""
-    
-    try:
-        # Admin ga yuborish
-        await bot.send_message(
-            chat_id=ADMIN_CHAT_ID,
-            text=admin_text
-        )
-        admin_notified = True
-        logging.info(f"✅ Adminga yuborildi: {user.id} - @{username}")
-    except Exception as e:
-        admin_notified = False
-        logging.error(f"Adminga yuborishda xato: {e}")
-    
-    # Foydalanuvchiga javob
-    success_text = f"""✅ **Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!**
+👥 **Jami ro'yxatdan o'tganlar:** {db.get_user_count()}"""
+        
+        try:
+            # Admin ga yuborish
+            await bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=admin_text
+            )
+            admin_notified = True
+            logging.info(f"✅ Adminga yuborildi: {user.id} - @{username}")
+        except Exception as e:
+            admin_notified = False
+            logging.error(f"Adminga yuborishda xato: {e}")
+        
+        # Foydalanuvchiga javob
+        success_text = f"""✅ **Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!**
 
 📋 **Sizning ma'lumotlaringiz:**
 • **Ism-familiya:** {data['full_name']}
@@ -671,7 +757,14 @@ async def process_description(message: Message, state: FSMContext):
 📌 **Eslatma:** Ijodiy ishingizni @{ADMIN_USERNAME} ga yuboring.
 
 ⚠️ **Diqqat:** Siz endi qayta ro'yxatdan o'ta olmaysiz. Faqat telefon raqamingizni yangilashingiz mumkin."""
+    else:
+        success_text = f"""❌ **Ro'yxatdan o'tishda xatolik yuz berdi!**
 
+Iltimos, qayta urinib ko'ring yoki admin bilan bog'laning.
+
+👤 **Admin:** @{ADMIN_USERNAME}"""
+        admin_notified = False
+    
     # Admin bilan bog'lanish tugmasi
     contact_button = InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")
     contact_keyboard = InlineKeyboardMarkup(inline_keyboard=[[contact_button]])
@@ -683,17 +776,6 @@ async def process_description(message: Message, state: FSMContext):
     
     await message.answer(success_text, reply_markup=contact_keyboard)
     await state.clear()
-
-# Barcha foydalanuvchilarni olish
-def get_all_users():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT COUNT(*) FROM registered_users')
-    count = cursor.fetchone()[0]
-    
-    conn.close()
-    return count
 
 # ==================== BOSHQA XABARLAR ====================
 @dp.message()
@@ -712,9 +794,6 @@ async def main():
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
-    # Bazani ishga tushirish
-    init_database()
     
     # Admin ma'lumotlarini saqlash
     save_admin_data()
@@ -749,11 +828,7 @@ async def main():
         logging.warning("⚠️ Rasm topilmadi")
     
     # Baza statistikasi
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM registered_users')
-    user_count = cursor.fetchone()[0]
-    conn.close()
+    user_count = db.get_user_count()
     
     logging.info(f"👥 Ro'yxatdan o'tganlar: {user_count} ta")
     logging.info(f"👤 Admin: @{ADMIN_USERNAME} (ID: {ADMIN_CHAT_ID})")
