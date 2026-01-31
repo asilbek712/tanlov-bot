@@ -2,11 +2,12 @@ import asyncio
 import logging
 import os
 import json
+import sqlite3
 from datetime import datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, StateFilter
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -23,6 +24,60 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
+# SQLite bazasini yaratish
+def init_database():
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    # Foydalanuvchilar jadvali
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS registered_users (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT,
+        full_name TEXT,
+        age INTEGER,
+        location TEXT,
+        phone TEXT,
+        description TEXT,
+        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+# Foydalanuvchini bazadan tekshirish
+def check_user_registered(user_id):
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM registered_users WHERE user_id = ?', (user_id,))
+    user = cursor.fetchone()
+    
+    conn.close()
+    return user is not None
+
+# Foydalanuvchini bazaga qo'shish
+def add_user_to_db(user_data):
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    INSERT INTO registered_users (user_id, username, full_name, age, location, phone, description)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        user_data['user_id'],
+        user_data['username'],
+        user_data['full_name'],
+        user_data['age'],
+        user_data['location'],
+        user_data['phone'],
+        user_data['description']
+    ))
+    
+    conn.commit()
+    conn.close()
+
 # FSM holatlari
 class Registration(StatesGroup):
     waiting_for_name = State()
@@ -30,6 +85,9 @@ class Registration(StatesGroup):
     waiting_for_location = State()
     waiting_for_phone = State()
     waiting_for_description = State()
+
+class PhoneRequest(StatesGroup):
+    waiting_for_phone = State()
 
 # Fayllar ro'yxatlari
 IMAGE_FILES = [
@@ -87,6 +145,17 @@ def save_admin_data():
     with open("admin_config.json", "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
+# Telefon raqami tugmasini yaratish
+def create_phone_keyboard():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    return keyboard
+
 # ==================== START FUNKSIYALARI ====================
 START_TEXT = """📣 "BOBUR VORISLARI" VILOYAT ONLAYN VIDEOROLIKLAR TANLOVI
 
@@ -119,7 +188,59 @@ async def start_cmd(message: Message):
     if user.id == ADMIN_CHAT_ID:
         logging.info(f"🔥 ADMIN KIRDI: @{user.username} (ID: {user.id})")
     
-    # Tugmalarni yaratish
+    # Foydalanuvchi allaqachon ro'yxatdan o'tganmi?
+    if check_user_registered(user.id):
+        # Agar ro'yxatdan o'tgan bo'lsa, maxsus menyu
+        buttons = [
+            [InlineKeyboardButton(text="📄 Tanlov nizomi (DOCX)", callback_data="download_doc")],
+            [InlineKeyboardButton(text="📄 Tanlov nizomi (PDF)", callback_data="download_pdf")],
+            [InlineKeyboardButton(text="📱 Telefon raqamni yangilash", callback_data="update_phone")],
+            [InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        
+        # Rasm mavjud bo'lsa
+        image_file = check_file_exists(IMAGE_FILES)
+        
+        if image_file:
+            try:
+                photo = FSInputFile(image_file)
+                await bot.send_photo(
+                    chat_id=message.chat.id,
+                    photo=photo,
+                    caption=f"""✅ **Siz allaqachon ro'yxatdan o'tgansiz!**
+
+{START_TEXT}
+
+📌 **Eslatma:** Siz faqat bir marta ro'yxatdan o'tishingiz mumkin.
+Agar telefon raqamingizni yangilash zarur bo'lsa, yuqoridagi tugmadan foydalaning.""",
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                logging.error(f"Rasm yuborishda xato: {e}")
+                await message.answer(
+                    f"""✅ **Siz allaqachon ro'yxatdan o'tgansiz!**
+
+{START_TEXT}
+
+📌 **Eslatma:** Siz faqat bir marta ro'yxatdan o'tishingiz mumkin.
+Agar telefon raqamingizni yangilash zarur bo'lsa, yuqoridagi tugmadan foydalaning.""",
+                    reply_markup=keyboard
+                )
+        else:
+            await message.answer(
+                f"""✅ **Siz allaqachon ro'yxatdan o'tgansiz!**
+
+{START_TEXT}
+
+📌 **Eslatma:** Siz faqat bir marta ro'yxatdan o'tishingiz mumkin.
+Agar telefon raqamingizni yangilash zarur bo'lsa, yuqoridagi tugmadan foydalaning.""",
+                reply_markup=keyboard
+            )
+        return
+    
+    # Agar ro'yxatdan o'tmagan bo'lsa, oddiy menyu
     buttons = []
     
     # Nizom fayllari tugmalari
@@ -135,7 +256,7 @@ async def start_cmd(message: Message):
     # Ro'yxatdan o'tish
     buttons.append([InlineKeyboardButton(text="📝 Ro'yxatdan o'tish", callback_data="start_registration")])
     
-    # Admin bilan bog'lanish - TUG'RI URL
+    # Admin bilan bog'lanish
     buttons.append([InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")])
     
     # Admin uchun qo'shimcha tugmalar
@@ -202,8 +323,19 @@ async def show_stats_cmd(callback: CallbackQuery):
         pdf_file = check_file_exists(PDF_FILES)
         image_file = check_file_exists(IMAGE_FILES)
         
-        stats_text = f"""📊 **Bot statistika:**
+        # Bazadan statistika
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
         
+        cursor.execute('SELECT COUNT(*) FROM registered_users')
+        total_users = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        stats_text = f"""📊 **Bot statistika:**
+
+👥 **Ro'yxatdan o'tganlar:** {total_users} ta foydalanuvchi
+
 📁 **Fayllar holati:**
 """
         if doc_file:
@@ -275,10 +407,95 @@ async def download_pdf_cmd(callback: CallbackQuery):
             f"👤 Admin bilan bog'laning: @{ADMIN_USERNAME}"
         )
 
+# ==================== TELEFON RAQAMNI YANGILASH ====================
+@dp.callback_query(F.data == "update_phone")
+async def update_phone_cmd(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    
+    # Foydalanuvchi ro'yxatdan o'tganmi?
+    if not check_user_registered(callback.from_user.id):
+        await callback.message.answer("❌ Siz hali ro'yxatdan o'tmagansiz. Avval ro'yxatdan o'ting.")
+        return
+    
+    await state.set_state(PhoneRequest.waiting_for_phone)
+    
+    await callback.message.answer(
+        "📱 **Yangi telefon raqamingizni yuboring:**\n\n"
+        "Telefon raqamingizni quyidagi tugma orqali yuboring yoki formatda kiriting:\n"
+        "Misol: *+998901234567* yoki *901234567*",
+        reply_markup=create_phone_keyboard()
+    )
+
+@dp.message(PhoneRequest.waiting_for_phone)
+async def process_update_phone(message: Message, state: FSMContext):
+    # Contact yuborilganmi?
+    if message.contact:
+        phone = message.contact.phone_number
+    else:
+        phone = message.text.strip().replace(' ', '')
+    
+    # Telefon raqamini tekshirish va formatlash
+    cleaned_phone = phone.replace('+', '')
+    if not cleaned_phone.isdigit():
+        await message.answer("❌ Telefon raqami faqat raqamlardan iborat bo'lishi kerak. Qaytadan kiriting:")
+        return
+    
+    if len(cleaned_phone) < 9:
+        await message.answer("❌ Telefon raqami juda qisqa. To'liq raqam kiriting:")
+        return
+    
+    if not (cleaned_phone.startswith('998') or len(cleaned_phone) == 9):
+        phone = f"+998{cleaned_phone[-9:]}" if len(cleaned_phone) == 9 else f"+{cleaned_phone}"
+    
+    # Bazaga yangilash
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('UPDATE registered_users SET phone = ? WHERE user_id = ?', 
+                  (phone, message.from_user.id))
+    
+    conn.commit()
+    conn.close()
+    
+    await message.answer(
+        f"✅ **Telefon raqamingiz muvaffaqiyatli yangilandi!**\n\n"
+        f"📱 **Yangi raqam:** {phone}\n\n"
+        f"👤 **Admin:** @{ADMIN_USERNAME}",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="/start")]],
+            resize_keyboard=True
+        )
+    )
+    
+    # Admin ga bildirish
+    try:
+        await bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=f"📱 **Telefon raqam yangilandi**\n\n"
+                 f"👤 Foydalanuvchi: @{message.from_user.username or 'Noma\'lum'}\n"
+                 f"🆔 ID: `{message.from_user.id}`\n"
+                 f"📱 Yangi raqam: {phone}\n"
+                 f"⏰ Vaqt: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+    except Exception as e:
+        logging.error(f"Adminga xabar yuborishda xato: {e}")
+    
+    await state.clear()
+
 # ==================== RO'YXATDAN O'TISH FUNKSIYALARI ====================
 @dp.callback_query(F.data == "start_registration")
 async def start_registration_cmd(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    
+    # Foydalanuvchi allaqachon ro'yxatdan o'tganmi?
+    if check_user_registered(callback.from_user.id):
+        await callback.message.answer(
+            "❌ **Siz allaqachon ro'yxatdan o'tgansiz!**\n\n"
+            "Siz faqat bir marta ro'yxatdan o'tishingiz mumkin.\n"
+            "Agar telefon raqamingizni yangilash zarur bo'lsa, /start ni bosing va 'Telefon raqamni yangilash' tugmasidan foydalaning."
+        )
+        return
+    
     await state.set_state(Registration.waiting_for_name)
     
     text = """🎯 **Ro'yxatdan o'tish**
@@ -339,20 +556,29 @@ async def process_location(message: Message, state: FSMContext):
     await message.answer(f"""✅ *{location}* manzili qabul qilindi.
 
 4️⃣ **Telefon raqamingizni** yuboring.
-(Misol: *+998901234567* yoki *901234567*)""")
+
+📱 **Iltimos, telefon raqamingizni quyidagi tugma orqali yuboring:**""",
+        reply_markup=create_phone_keyboard()
+    )
 
 @dp.message(Registration.waiting_for_phone)
 async def process_phone(message: Message, state: FSMContext):
-    phone = message.text.strip().replace(' ', '')
+    # Contact yuborilganmi?
+    if message.contact:
+        phone = message.contact.phone_number
+    else:
+        phone = message.text.strip().replace(' ', '')
     
-    # Telefon raqamini tekshirish
+    # Telefon raqamini tekshirish va formatlash
     cleaned_phone = phone.replace('+', '')
     if not cleaned_phone.isdigit():
-        await message.answer("❌ Telefon raqami faqat raqamlardan iborat bo'lishi kerak. Qaytadan kiriting:")
+        await message.answer("❌ Telefon raqami faqat raqamlardan iborat bo'lishi kerak. Qaytadan kiriting:",
+                           reply_markup=create_phone_keyboard())
         return
     
     if len(cleaned_phone) < 9:
-        await message.answer("❌ Telefon raqami juda qisqa. To'liq raqam kiriting:")
+        await message.answer("❌ Telefon raqami juda qisqa. To'liq raqam kiriting:",
+                           reply_markup=create_phone_keyboard())
         return
     
     if not (cleaned_phone.startswith('998') or len(cleaned_phone) == 9):
@@ -364,7 +590,12 @@ async def process_phone(message: Message, state: FSMContext):
     await message.answer(f"""✅ Telefon raqami qabul qilindi.
 
 5️⃣ **Ijodiy ishingiz haqida qisqacha ma'lumot** yuboring.
-(Misol: *Boburning "Men sendin so'rayman..." g'azalini o'qiganman, video 1 daqiqa 45 soniya*)""")
+(Misol: *Boburning "Men sendin so'rayman..." g'azalini o'qiganman, video 1 daqiqa 45 soniya*)""",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Davom etish")]],
+            resize_keyboard=True
+        )
+    )
 
 @dp.message(Registration.waiting_for_description)
 async def process_description(message: Message, state: FSMContext):
@@ -383,6 +614,19 @@ async def process_description(message: Message, state: FSMContext):
     user = message.from_user
     username = user.username or "Noma'lum"
     
+    # Bazaga saqlash
+    user_data = {
+        'user_id': user.id,
+        'username': username,
+        'full_name': data['full_name'],
+        'age': data['age'],
+        'location': data['location'],
+        'phone': data['phone'],
+        'description': data['description']
+    }
+    
+    add_user_to_db(user_data)
+    
     # Admin ga yuborish matni
     admin_text = f"""📥 **YANGI RO'YXATDAN O'TISH**
 
@@ -397,7 +641,8 @@ async def process_description(message: Message, state: FSMContext):
 4️⃣ **Telefon:** {data['phone']}
 5️⃣ **Ijodiy ish:** {data['description']}
 
-⏰ **Vaqt:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+⏰ **Vaqt:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+👥 **Jami ro'yxatdan o'tganlar:** {len(get_all_users())}"""
     
     try:
         # Admin ga yuborish
@@ -423,9 +668,11 @@ async def process_description(message: Message, state: FSMContext):
 
 👤 **Admin:** @{ADMIN_USERNAME}
 
-📌 **Eslatma:** Ijodiy ishingizni @{ADMIN_USERNAME} ga yuboring."""
+📌 **Eslatma:** Ijodiy ishingizni @{ADMIN_USERNAME} ga yuboring.
 
-    # Admin bilan bog'lanish tugmasi - TUG'RI URL
+⚠️ **Diqqat:** Siz endi qayta ro'yxatdan o'ta olmaysiz. Faqat telefon raqamingizni yangilashingiz mumkin."""
+
+    # Admin bilan bog'lanish tugmasi
     contact_button = InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")
     contact_keyboard = InlineKeyboardMarkup(inline_keyboard=[[contact_button]])
     
@@ -436,6 +683,17 @@ async def process_description(message: Message, state: FSMContext):
     
     await message.answer(success_text, reply_markup=contact_keyboard)
     await state.clear()
+
+# Barcha foydalanuvchilarni olish
+def get_all_users():
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT COUNT(*) FROM registered_users')
+    count = cursor.fetchone()[0]
+    
+    conn.close()
+    return count
 
 # ==================== BOSHQA XABARLAR ====================
 @dp.message()
@@ -454,6 +712,9 @@ async def main():
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
+    
+    # Bazani ishga tushirish
+    init_database()
     
     # Admin ma'lumotlarini saqlash
     save_admin_data()
@@ -487,6 +748,14 @@ async def main():
     else:
         logging.warning("⚠️ Rasm topilmadi")
     
+    # Baza statistikasi
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM registered_users')
+    user_count = cursor.fetchone()[0]
+    conn.close()
+    
+    logging.info(f"👥 Ro'yxatdan o'tganlar: {user_count} ta")
     logging.info(f"👤 Admin: @{ADMIN_USERNAME} (ID: {ADMIN_CHAT_ID})")
     logging.info("🌐 Web server ishga tushmoqda...")
     
