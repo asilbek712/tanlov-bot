@@ -16,8 +16,8 @@ from aiohttp import web
 
 # TOKEN
 TOKEN = "8483323640:AAF6ti4BpL3npCITChDPYoKP734VdjCIwug"
-ADMIN_CHAT_ID = 7548105589  # @chrvvvv ID raqami
-ADMIN_USERNAME = "chrvvvv"  # @chrvvvv username
+ADMIN_CHAT_ID = 8457390017  # @onlinetanlov_admin ID raqami
+ADMIN_USERNAME = "onlinetanlov_admin"  # @onlinetanlov_admin username
 
 # Bot yaratish
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -234,7 +234,7 @@ START_TEXT = """📣 "BOBUR VORISLARI" VILOYAT ONLAYN VIDEOROLIKLAR TANLOVI
 
 🏆 **G'oliblar:** Diplom va sovg'alar bilan taqdirlanadi
 
-📬 **Ijodiy ishlarni yuborish:** @chrvvvv
+📬 **Ijodiy ishlarni yuborish:** @onlinetanlov_admin
 
 ℹ️ **Batafsil ma'lumot:** Quyidagi tugmalar orqali"""
 
