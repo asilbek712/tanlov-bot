@@ -18,6 +18,7 @@ from aiohttp import web
 TOKEN = "8483323640:AAF6ti4BpL3npCITChDPYoKP734VdjCIwug"
 ADMIN_CHAT_ID = 8457390017  # @onlinetanlov_admin ID raqami
 ADMIN_USERNAME = "onlinetanlov_admin"  # @onlinetanlov_admin username
+CHANNEL_USERNAME = "kelaja2026"  # Tanlov kanali
 
 # Bot yaratish
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -197,6 +198,7 @@ def save_admin_data():
     data = {
         "admin_chat_id": ADMIN_CHAT_ID,
         "admin_username": ADMIN_USERNAME,
+        "channel_username": CHANNEL_USERNAME,
         "last_updated": datetime.now().isoformat()
     }
     with open("admin_config.json", "w", encoding="utf-8") as f:
@@ -222,7 +224,8 @@ START_TEXT = """📣 "BOBUR VORISLARI" VILOYAT ONLAYN VIDEOROLIKLAR TANLOVI
 
 🎯 **Maqsad:** Yosh avlodni ma'naviy tarbiyalash, ijodiy qobiliyatlarini rivojlantirish.
 
-📅 **Sana:** 2026-yil 4-12 fevral
+🗓 **Tanlov:**
+2026-yil 4-fevral kunidan 12-fevral kuniga qadar "Bobur vorislari" sarlavhasi ostida @kelaja2026 telegram kanalida o‘tkaziladi.
 
 👥 **Qatnashuvchilar:** 8-18 yosh
 
@@ -251,6 +254,7 @@ async def start_cmd(message: Message):
         buttons = [
             [InlineKeyboardButton(text="📄 Tanlov nizomi (DOCX)", callback_data="download_doc")],
             [InlineKeyboardButton(text="📄 Tanlov nizomi (PDF)", callback_data="download_pdf")],
+            [InlineKeyboardButton(text="📺 Tanlov kanali", url=f"https://t.me/{CHANNEL_USERNAME}")],
             [InlineKeyboardButton(text="📱 Telefon raqamni yangilash", callback_data="update_phone")],
             [InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")]
         ]
@@ -310,6 +314,9 @@ Agar telefon raqamingizni yangilash zarur bo'lsa, yuqoridagi tugmadan foydalanin
     if pdf_file:
         buttons.append([InlineKeyboardButton(text="📄 Tanlov nizomi (PDF)", callback_data="download_pdf")])
     
+    # Tanlov kanali
+    buttons.append([InlineKeyboardButton(text="📺 Tanlov kanali", url=f"https://t.me/{CHANNEL_USERNAME}")])
+    
     # Ro'yxatdan o'tish
     buttons.append([InlineKeyboardButton(text="📝 Ro'yxatdan o'tish", callback_data="start_registration")])
     
@@ -366,6 +373,7 @@ async def show_id_cmd(callback: CallbackQuery):
         text = f"""🔐 **Admin ma'lumotlari:**
 Admin ID: `{ADMIN_CHAT_ID}`
 Admin username: @{ADMIN_USERNAME}
+Tanlov kanali: @{CHANNEL_USERNAME}
 Sizning ID: `{user.id}`"""
         await callback.message.answer(text)
 
@@ -409,6 +417,7 @@ async def show_stats_cmd(callback: CallbackQuery):
             stats_text += "❌ Rasm topilmadi\n"
             
         stats_text += f"\n👤 **Admin:** @{ADMIN_USERNAME}"
+        stats_text += f"\n📺 **Kanal:** @{CHANNEL_USERNAME}"
         
         await callback.message.answer(stats_text)
 
@@ -453,7 +462,7 @@ async def download_doc_cmd(callback: CallbackQuery):
             await bot.send_document(
                 chat_id=callback.message.chat.id,
                 document=doc_obj,
-                caption="📄 **Tanlov nizomi**\nFaylni yuklab oling va o'qing."
+                caption=f"📄 **Tanlov nizomi**\nFaylni yuklab oling va o'qing.\n\n📺 **Tanlov kanali:** @{CHANNEL_USERNAME}"
             )
         except Exception as e:
             logging.error(f"DOCX yuklashda xato: {e}")
@@ -476,7 +485,7 @@ async def download_pdf_cmd(callback: CallbackQuery):
             await bot.send_document(
                 chat_id=callback.message.chat.id,
                 document=pdf_obj,
-                caption="📄 **Tanlov nizomi (PDF)**\nFaylni yuklab oling va o'qing."
+                caption=f"📄 **Tanlov nizomi (PDF)**\nFaylni yuklab oling va o'qing.\n\n📺 **Tanlov kanali:** @{CHANNEL_USERNAME}"
             )
         except Exception as e:
             logging.error(f"PDF yuklashda xato: {e}")
@@ -536,7 +545,8 @@ async def process_update_phone(message: Message, state: FSMContext):
         await message.answer(
             f"✅ **Telefon raqamingiz muvaffaqiyatli yangilandi!**\n\n"
             f"📱 **Yangi raqam:** {phone}\n\n"
-            f"👤 **Admin:** @{ADMIN_USERNAME}",
+            f"👤 **Admin:** @{ADMIN_USERNAME}\n"
+            f"📺 **Tanlov kanali:** @{CHANNEL_USERNAME}",
             reply_markup=ReplyKeyboardMarkup(
                 keyboard=[[KeyboardButton(text="/start")]],
                 resize_keyboard=True
@@ -578,12 +588,14 @@ async def start_registration_cmd(callback: CallbackQuery, state: FSMContext):
     
     await state.set_state(Registration.waiting_for_name)
     
-    text = """🎯 **Ro'yxatdan o'tish**
+    text = f"""🎯 **Ro'yxatdan o'tish**
 
 Quyidagi ma'lumotlarni ketma-ket yuboring:
 
 1️⃣ **Ism va familiyangizni** yuboring.
-(Misol: *Alisher Navoiy*)"""
+(Misol: *Alisher Navoiy*)
+
+📺 **Tanlov kanali:** @{CHANNEL_USERNAME}"""
     
     await callback.message.answer(text)
 
@@ -601,7 +613,9 @@ async def process_name(message: Message, state: FSMContext):
     await message.answer(f"""✅ *{name}* qabul qilindi.
 
 2️⃣ **Yoshingizni** yuboring (8-18 yosh oralig'ida).
-(Misol: *15*)""")
+(Misol: *15*)
+
+📺 **Tanlov kanali:** @{CHANNEL_USERNAME}""")
 
 @dp.message(Registration.waiting_for_age)
 async def process_age(message: Message, state: FSMContext):
@@ -620,7 +634,9 @@ async def process_age(message: Message, state: FSMContext):
     await message.answer(f"""✅ *{age}* yosh qabul qilindi.
 
 3️⃣ **Manzilingizni** yuboring (shahar/tuman).
-(Misol: *Qarshi shahri*)""")
+(Misol: *Qarshi shahri*)
+
+📺 **Tanlov kanali:** @{CHANNEL_USERNAME}""")
 
 @dp.message(Registration.waiting_for_location)
 async def process_location(message: Message, state: FSMContext):
@@ -637,7 +653,9 @@ async def process_location(message: Message, state: FSMContext):
 
 4️⃣ **Telefon raqamingizni** yuboring.
 
-📱 **Iltimos, telefon raqamingizni quyidagi tugma orqali yuboring:**""",
+📱 **Iltimos, telefon raqamingizni quyidagi tugma orqali yuboring:**
+
+📺 **Tanlov kanali:** @{CHANNEL_USERNAME}""",
         reply_markup=create_phone_keyboard()
     )
 
@@ -670,7 +688,9 @@ async def process_phone(message: Message, state: FSMContext):
     await message.answer(f"""✅ Telefon raqami qabul qilindi.
 
 5️⃣ **Ijodiy ishingiz haqida qisqacha ma'lumot** yuboring.
-(Misol: *Boburning "Men sendin so'rayman..." g'azalini o'qiganman, video 1 daqiqa 45 soniya*)""",
+(Misol: *Boburning "Men sendin so'rayman..." g'azalini o'qiganman, video 1 daqiqa 45 soniya*)
+
+📺 **Tanlov kanali:** @{CHANNEL_USERNAME}""",
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="Davom etish")]],
             resize_keyboard=True
@@ -753,6 +773,7 @@ async def process_description(message: Message, state: FSMContext):
 • **Ijodiy ish:** {data['description'][:100]}...
 
 👤 **Admin:** @{ADMIN_USERNAME}
+📺 **Tanlov kanali:** @{CHANNEL_USERNAME}
 
 📌 **Eslatma:** Ijodiy ishingizni @{ADMIN_USERNAME} ga yuboring.
 
@@ -762,12 +783,14 @@ async def process_description(message: Message, state: FSMContext):
 
 Iltimos, qayta urinib ko'ring yoki admin bilan bog'laning.
 
-👤 **Admin:** @{ADMIN_USERNAME}"""
+👤 **Admin:** @{ADMIN_USERNAME}
+📺 **Tanlov kanali:** @{CHANNEL_USERNAME}"""
         admin_notified = False
     
     # Admin bilan bog'lanish tugmasi
     contact_button = InlineKeyboardButton(text="👤 Admin bilan bog'lanish", url=f"https://t.me/{ADMIN_USERNAME}")
-    contact_keyboard = InlineKeyboardMarkup(inline_keyboard=[[contact_button]])
+    channel_button = InlineKeyboardButton(text="📺 Tanlov kanali", url=f"https://t.me/{CHANNEL_USERNAME}")
+    contact_keyboard = InlineKeyboardMarkup(inline_keyboard=[[contact_button], [channel_button]])
     
     if admin_notified:
         success_text += "\n\n✅ Ma'lumotlaringiz adminga yuborildi."
@@ -832,6 +855,7 @@ async def main():
     
     logging.info(f"👥 Ro'yxatdan o'tganlar: {user_count} ta")
     logging.info(f"👤 Admin: @{ADMIN_USERNAME} (ID: {ADMIN_CHAT_ID})")
+    logging.info(f"📺 Kanal: @{CHANNEL_USERNAME}")
     logging.info("🌐 Web server ishga tushmoqda...")
     
     # Web server ishga tushirish
